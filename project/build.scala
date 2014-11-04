@@ -20,9 +20,9 @@ object build extends Build {
     , crossScalaVersions := Seq(scalaVersion.value)
   )
 
-  val ProguardPre = config("proguard-pre") extend(Compile)
+  val ProguardPre = config("proguard-pre")
 
-  def dependencies: Seq[Setting[_]] = Seq(
+  def dependenciesPre: Seq[Setting[_]] = Seq(
     ivyConfigurations += ProguardPre,
     libraryDependencies <+= (ProguardKeys.proguardVersion in ProguardPre) { version =>
       "net.sf.proguard" % "proguard-base" % version % ProguardPre.name
@@ -34,11 +34,13 @@ object build extends Build {
   , base = file(".")
   , settings = standardSettings ++ proguardSettings
       ++ Seq[Settings](libraryDependencies ++= depend.aws)
-      ++ inConfig(ProguardPre)(dependencies ++ ProguardSettings.default)
+
+      ++ inConfig(ProguardPre)(ProguardSettings.default ++ dependenciesPre ++ Seq(managedClasspath <<= (managedClasspath, managedClasspath in Compile).map({ case (y, x) => y ++ x })) )
+      ++ dependenciesPre
       ++ Seq[Settings](
-      ProguardKeys.options in ProguardPre <<= (update, packageBin in Compile).map({ case (u, b) => Seq(s"""
+      ProguardKeys.options in ProguardPre <<= (update, packageBin in Compile).map({ case (u, b) => Seq("-ignorewarnings", s"""
              -injars $b
-             -printmappings mappings.map
+             -printmapping mappings.map
              -keep class com.ambiata.** { *; }
              -keep class com.amazonaws.** { *; }
              -keepclassmembers class com.ambiata.** { *; }
@@ -50,49 +52,16 @@ object build extends Build {
             -dontoptimize
             -dontshrink
             -dontpreverify
-            -dontwarn META-INF**
-            -dontwarn scala.**
-            -dontwarn com.ambiata.**
-            -dontwarn org.apache.hadoop.**
-            -dontwarn org.apache.avro.**
-            -dontwarn org.apache.avalon.**
-            -dontwarn org.apache.commons.lang.**
-            -dontwarn org.specs2.**
-            -dontwarn org.scalacheck.**
-            -dontwarn org.springframework.**
-            -dontwarn com.owtelse.**
-            -dontwarn org.jdom.**
-            -dontwarn org.junit.**
-            -dontwarn org.aspectj.**
-            -dontwarn org.slf4j.**
-            -dontwarn scodec.**
-            -dontwarn org.fusesource.**
-            -dontwarn org.apache.log4j.**
-            -dontwarn org.apache.log.**
-            -dontwarn com.bea.xml.**
-            -dontwarn com.nicta.scoobi.**
-            -dontwarn com.amazonaws.**
-            -dontwarn org.xmlpull.**
-            -dontwarn net.sf.cglib.**
-            -dontwarn nu.xom.**
-            -dontwarn com.ctc.wstx.**
-            -dontwarn org.kxml2.**
-            -dontwarn org.dom4j.**
-            -dontwarn org.codehaus.jettison.**
-            -dontwarn javassist.**
-            -dontwarn javax.**
-            -dontwarn org.joda.time.**
-            -dontwarn scala.reflect.**
            """)})
          )
       ++ Seq[Settings](
     name := "test-s3"
   , ProguardKeys.options in Proguard <<= (ProguardKeys.proguard in ProguardPre, name, version in ThisBuild, baseDirectory, update, packageBin in Compile).map({ case (_, n, v, dir, u, b) => {
-        val r = IO.readLines(b.getParentFile / "mappings.map")
+        val r = IO.readLines(b.getParentFile / "proguard" / "mappings.map")
         val s = r.filter(!_.startsWith(" "))
         val t = s.map(_.replace("-> com.amazonaws", "-> com.ambiata.com.amazonaws"))
-        IO.writeLines(b.getParentFile / "aws.map", t)
-        Seq(s"""
+        IO.writeLines(b.getParentFile / "proguard" / "aws.map", t)
+        Seq("-ignorewarnings", s"""
       -injars $b
       -keep class com.ambiata.** { *; }
       -keepclassmembers class com.ambiata.** { *; }
@@ -104,39 +73,6 @@ object build extends Build {
       -dontoptimize
       -dontshrink
       -dontpreverify
-      -dontwarn META-INF**
-      -dontwarn scala.**
-      -dontwarn com.ambiata.**
-      -dontwarn org.apache.hadoop.**
-      -dontwarn org.apache.avro.**
-      -dontwarn org.apache.avalon.**
-      -dontwarn org.apache.commons.lang.**
-      -dontwarn org.specs2.**
-      -dontwarn org.scalacheck.**
-      -dontwarn org.springframework.**
-      -dontwarn com.owtelse.**
-      -dontwarn org.jdom.**
-      -dontwarn org.junit.**
-      -dontwarn org.aspectj.**
-      -dontwarn org.slf4j.**
-      -dontwarn scodec.**
-      -dontwarn org.fusesource.**
-      -dontwarn org.apache.log4j.**
-      -dontwarn org.apache.log.**
-      -dontwarn com.bea.xml.**
-      -dontwarn com.nicta.scoobi.**
-      -dontwarn com.amazonaws.**
-      -dontwarn org.xmlpull.**
-      -dontwarn net.sf.cglib.**
-      -dontwarn nu.xom.**
-      -dontwarn com.ctc.wstx.**
-      -dontwarn org.kxml2.**
-      -dontwarn org.dom4j.**
-      -dontwarn org.codehaus.jettison.**
-      -dontwarn javassist.**
-      -dontwarn javax.**
-      -dontwarn org.joda.time.**
-      -dontwarn scala.reflect.**
     """) } })
     , javaOptions in (Proguard, ProguardKeys.proguard) := Seq("-Xmx2G"))
     ++ addArtifact(name.apply(n => Artifact(s"$n-inlined", "shade", "jar")), (ProguardKeys.proguard in Proguard).map(_.head))
